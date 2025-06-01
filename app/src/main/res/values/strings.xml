@@ -1,12 +1,15 @@
 <resources>
     <string name="app_name">Smart Helmet</string>
-    <string name="login">Login</string>
+    <string name="login">Sign In</string>
     <string name="email">Email</string>
     <string name="password">Password</string>
-    <string name="register">Register</string>
-    <string name="click_to_login">click_to_login</string>
-    <string name="click_to_loginn">Click to login</string>
-    <string name="clicktologin">Click to Login</string>
-    <string name="click_to_register">Click to Register</string>
+    <string name="register">Sign Up</string>
+    <string name="click_to_login">Sign in</string>
+    <string name="click_to_loginn">Sign in</string>
+    <string name="clicktologin">Sign in</string>
+    <string name="click_to_register">Sign up</string>
     <string name="logout">Logout</string>
+    <string name="first_name">First Name</string>
+    <string name="last_name">Last Name</string>
+    <string name="contact_number">Contact Number</string>
 </resources>
