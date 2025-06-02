@@ -31,6 +31,14 @@
         </activity>
         <activity
             android:name=".Dashboard"
+            android:theme="@style/Theme.Material3.Light"
+            android:exported="false" />
+        <activity
+            android:name=".ProfileActivity"
+            android:theme="@style/Theme.Material3.Light.NoActionBar"
+            android:exported="false" />
+        <activity
+            android:name=".ChangePasswordActivity"
             android:theme="@style/Theme.Material3.Light.NoActionBar"
             android:exported="false" />
     </application>
