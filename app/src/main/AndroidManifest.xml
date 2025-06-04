@@ -5,6 +5,21 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
     
+    <!-- Bluetooth permissions -->
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    
+    <!-- WiFi permissions -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- Internet permissions -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -35,11 +50,15 @@
             android:exported="false" />
         <activity
             android:name=".ProfileActivity"
-            android:theme="@style/Theme.Material3.Light.NoActionBar"
+            android:theme="@style/Theme.Material3.Light"
             android:exported="false" />
         <activity
             android:name=".ChangePasswordActivity"
-            android:theme="@style/Theme.Material3.Light.NoActionBar"
+            android:theme="@style/Theme.Material3.Light"
+            android:exported="false" />
+        <activity
+            android:name=".DevicePairingActivity"
+            android:theme="@style/Theme.Material3.Light"
             android:exported="false" />
     </application>
 

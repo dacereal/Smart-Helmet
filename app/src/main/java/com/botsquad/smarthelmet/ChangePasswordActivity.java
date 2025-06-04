@@ -3,6 +3,7 @@ package com.botsquad.smarthelmet;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.util.Log;
+import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
@@ -30,6 +31,12 @@ public class ChangePasswordActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_change_password);
 
+        // Enable back button in action bar
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+            getSupportActionBar().setTitle("Change Password");
+        }
+
         mAuth = FirebaseAuth.getInstance();
 
         editTextCurrentPassword = findViewById(R.id.editTextCurrentPassword);
@@ -51,6 +58,16 @@ public class ChangePasswordActivity extends AppCompatActivity {
                 changePassword();
             }
         });
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == android.R.id.home) {
+            // Handle back button click
+            finish();
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
     }
 
     private void changePassword() {
