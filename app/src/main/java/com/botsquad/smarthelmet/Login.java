@@ -58,36 +58,47 @@ public class Login extends AppCompatActivity {
             public void onClick(View v) {
                 progressBar.setVisibility(View.VISIBLE);
                 String email, password;
-                email = String.valueOf(editTextEmail.getText());
-                password = String.valueOf(editTextPassword.getText());
+                email = String.valueOf(editTextEmail.getText()).trim();
+                password = String.valueOf(editTextPassword.getText()).trim();
 
                 if(TextUtils.isEmpty(email)) {
-                    Toast.makeText(Login.this, "Enter email", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(Login.this, "Enter email or username", Toast.LENGTH_SHORT).show();
+                    progressBar.setVisibility(View.GONE);
                     return;
                 }
 
                 if(TextUtils.isEmpty(password)) {
                     Toast.makeText(Login.this, "Enter password", Toast.LENGTH_SHORT).show();
+                    progressBar.setVisibility(View.GONE);
                     return;
                 }
 
-                mAuth.signInWithEmailAndPassword(email, password)
-                        .addOnCompleteListener(new OnCompleteListener<AuthResult>() {
-                            @Override
-                            public void onComplete(@NonNull Task<AuthResult> task) {
-                                progressBar.setVisibility(View.GONE);
-                                if (task.isSuccessful()) {
-                                    Toast.makeText(Login.this, "Login Successful",
-                                            Toast.LENGTH_SHORT).show();
-                                    Intent intent = new Intent(getApplicationContext(), Dashboard.class);
-                                    startActivity(intent);
-                                    finish();
-                                } else {
-                                    Toast.makeText(Login.this, "Authentication failed.",
-                                            Toast.LENGTH_SHORT).show();
+                // Check for admin credentials
+                if (email.equals("admin") && password.equals("botsquad")) {
+                    Toast.makeText(Login.this, "Admin Login Successful", Toast.LENGTH_SHORT).show();
+                    Intent intent = new Intent(getApplicationContext(), AdminDashboard.class);
+                    startActivity(intent);
+                    finish();
+                } else {
+                    // Proceed with Firebase authentication for regular users
+                    mAuth.signInWithEmailAndPassword(email, password)
+                            .addOnCompleteListener(new OnCompleteListener<AuthResult>() {
+                                @Override
+                                public void onComplete(@NonNull Task<AuthResult> task) {
+                                    progressBar.setVisibility(View.GONE);
+                                    if (task.isSuccessful()) {
+                                        Toast.makeText(Login.this, "Login Successful",
+                                                Toast.LENGTH_SHORT).show();
+                                        Intent intent = new Intent(getApplicationContext(), Dashboard.class);
+                                        startActivity(intent);
+                                        finish();
+                                    } else {
+                                        Toast.makeText(Login.this, "Authentication failed.",
+                                                Toast.LENGTH_SHORT).show();
+                                    }
                                 }
-                            }
-                        });
+                            });
+                }
 
             }
         });

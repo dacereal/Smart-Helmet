@@ -60,6 +60,18 @@
             android:name=".DevicePairingActivity"
             android:theme="@style/Theme.Material3.Light"
             android:exported="false" />
+        <activity
+            android:name=".AdminDashboard"
+            android:theme="@style/Theme.Material3.Light"
+            android:exported="false" />
+        <activity
+            android:name=".UserManagementActivity"
+            android:theme="@style/Theme.Material3.Light"
+            android:exported="false" />
+        <activity
+            android:name=".EditUserActivity"
+            android:theme="@style/Theme.Material3.Light"
+            android:exported="false" />
     </application>
 
 </manifest>
