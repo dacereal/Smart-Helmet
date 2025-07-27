@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
@@ -12,6 +13,12 @@
         app:showAsAction="never"/>
 
     <item
+        android:id="@+id/menu_alert_tones"
+        android:title="@string/alert_tones"
+        android:icon="@android:drawable/ic_lock_idle_alarm"
+        app:showAsAction="never"/>
+
+    <item
         android:id="@+id/menu_change_password"
         android:title="Change Password"
         app:showAsAction="never"/>
@@ -20,5 +27,11 @@
         android:id="@+id/menu_logout"
         android:title="Logout"
         app:showAsAction="never"/>
+
+    <item
+        android:id="@+id/menu_connect_server"
+        android:title="Connect to Laptop"
+        android:icon="@android:drawable/ic_menu_share"
+        app:showAsAction="never" />
 
 </menu> 

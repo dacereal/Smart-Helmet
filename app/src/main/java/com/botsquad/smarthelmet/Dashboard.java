@@ -6,6 +6,8 @@ import android.bluetooth.BluetoothSocket;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.util.Base64;
 import android.view.Menu;
@@ -22,6 +24,7 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.google.android.material.textfield.TextInputEditText;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
@@ -32,13 +35,19 @@ import com.google.firebase.database.ValueEventListener;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.BufferedReader;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.net.URI;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.ByteBuffer;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.UUID;
+import java.net.Socket;
+import java.io.InputStream;
+
 
 public class Dashboard extends AppCompatActivity implements SurfaceHolder.Callback {
     private ImageView drowsinessStatusIcon;
@@ -55,11 +64,22 @@ public class Dashboard extends AppCompatActivity implements SurfaceHolder.Callba
     private static final UUID SMART_HELMET_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB"); // Standard SerialPortService ID
     private boolean isConnected = false;
     private Thread bluetoothThread;
+    private static final int CAMERA_FRAME_SIZE = 320 * 240 * 2; // Assuming 320x240 RGB565 format
+    private byte[] frameBuffer = new byte[CAMERA_FRAME_SIZE];
+    private android.graphics.Canvas canvas;
+    private android.graphics.Paint paint;
+    private android.graphics.Bitmap frameBitmap;
 
     private DatabaseReference mDatabase;
     private FirebaseAuth mAuth;
 
     private static final int REQUEST_DEVICE_PAIRING = 1001;
+    private static String SERVER_URL = "http://192.168.56.1:8080"; // Change this to your laptop's IP address
+    private ExecutorService networkExecutor;
+    private boolean isStreaming = false;
+    private Thread streamThread;
+    private HttpURLConnection connection;
+    private static final int BUFFER_SIZE = 8192;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -69,6 +89,7 @@ public class Dashboard extends AppCompatActivity implements SurfaceHolder.Callba
 
             mAuth = FirebaseAuth.getInstance();
             mDatabase = FirebaseDatabase.getInstance().getReference();
+            networkExecutor = Executors.newSingleThreadExecutor();
             
             // Initialize views first
             initializeViews();
@@ -89,6 +110,11 @@ public class Dashboard extends AppCompatActivity implements SurfaceHolder.Callba
             cameraPreview = new SurfaceView(this);
             surfaceHolder = cameraPreview.getHolder();
             surfaceHolder.addCallback(this);
+            
+            // Initialize frame bitmap and canvas
+            frameBitmap = android.graphics.Bitmap.createBitmap(320, 240, android.graphics.Bitmap.Config.RGB_565);
+            canvas = new android.graphics.Canvas();
+            paint = new android.graphics.Paint();
             
             // Find the CardView and its container
             androidx.cardview.widget.CardView cardView = findViewById(R.id.cameraPreviewCard);
@@ -130,11 +156,21 @@ public class Dashboard extends AppCompatActivity implements SurfaceHolder.Callba
     @Override
     public void surfaceCreated(@NonNull SurfaceHolder holder) {
         // Surface is created, ready to receive camera feed
+        canvas = holder.lockCanvas();
+        if (canvas != null) {
+            canvas.drawColor(android.graphics.Color.BLACK);
+            holder.unlockCanvasAndPost(canvas);
+        }
     }
 
     @Override
     public void surfaceChanged(@NonNull SurfaceHolder holder, int format, int width, int height) {
         // Surface size or format has changed
+        canvas = holder.lockCanvas();
+        if (canvas != null) {
+            canvas.drawColor(android.graphics.Color.BLACK);
+            holder.unlockCanvasAndPost(canvas);
+        }
     }
 
     @Override
@@ -175,10 +211,19 @@ public class Dashboard extends AppCompatActivity implements SurfaceHolder.Callba
             Intent intent = new Intent(Dashboard.this, DevicePairingActivity.class);
             startActivityForResult(intent, REQUEST_DEVICE_PAIRING);
             return true;
+        } else if (id == R.id.menu_alert_tones) {
+            // Navigate to Alert Tones Activity
+            Intent intent = new Intent(Dashboard.this, AlertTonesActivity.class);
+            startActivity(intent);
+            return true;
         } else if (id == R.id.menu_change_password) {
             // Navigate to Change Password Activity
             Intent intent = new Intent(Dashboard.this, ChangePasswordActivity.class);
             startActivity(intent);
+            return true;
+        } else if (id == R.id.menu_connect_server) {
+            // Show dialog to get server IP address
+            showServerConnectionDialog();
             return true;
         } else if (id == R.id.menu_logout) {
             // Handle Logout
@@ -316,38 +361,87 @@ public class Dashboard extends AppCompatActivity implements SurfaceHolder.Callba
     private void startBluetoothListener() {
         bluetoothThread = new Thread(() -> {
             byte[] buffer = new byte[1024];
+            int frameIndex = 0;
+            boolean receivingFrame = false;
+            
             while (isConnected) {
                 try {
                     int bytes = inputStream.read(buffer);
                     if (bytes > 0) {
-                        String message = new String(buffer, 0, bytes);
-                        try {
-                            // Parse the JSON message from prototype
-                            JSONObject data = new JSONObject(message);
-                            boolean isEyesClosed = data.getBoolean("is_eyes_closed");
-                            long timestamp = data.optLong("timestamp", System.currentTimeMillis());
+                        // Check if this is a JSON message or camera frame
+                        if (buffer[0] == '{') {  // JSON message starts with {
+                            String message = new String(buffer, 0, bytes);
+                            try {
+                                // Parse the JSON message from prototype
+                                JSONObject data = new JSONObject(message);
+                                boolean isEyesClosed = data.getBoolean("is_eyes_closed");
+                                long timestamp = data.optLong("timestamp", System.currentTimeMillis());
+                                
+                                // Update UI on main thread
+                                runOnUiThread(() -> {
+                                    // Update drowsiness status
+                                    if (isEyesClosed) {
+                                        drowsinessStatusIcon.setImageResource(android.R.drawable.presence_busy);
+                                        drowsinessStatusIcon.setColorFilter(getResources().getColor(android.R.color.holo_red_light));
+                                        drowsinessStatusText.setText("Driver Status: Drowsy");
+                                        
+                                        // Update Firebase with drowsiness event
+                                        updateDrowsinessEvent(true, timestamp);
+                                    } else {
+                                        drowsinessStatusIcon.setImageResource(android.R.drawable.presence_online);
+                                        drowsinessStatusIcon.setColorFilter(getResources().getColor(android.R.color.holo_green_light));
+                                        drowsinessStatusText.setText("Driver Status: Alert");
+                                        
+                                        // Update Firebase with alert status
+                                        updateDrowsinessEvent(false, timestamp);
+                                    }
+                                });
+                            } catch (JSONException e) {
+                                e.printStackTrace();
+                            }
+                        } else {  // This is a camera frame
+                            // Copy the received bytes to the frame buffer
+                            System.arraycopy(buffer, 0, frameBuffer, frameIndex, bytes);
+                            frameIndex += bytes;
                             
-                            // Update UI on main thread
-                            runOnUiThread(() -> {
-                                // Update drowsiness status
-                                if (isEyesClosed) {
-                                    drowsinessStatusIcon.setImageResource(android.R.drawable.presence_busy);
-                                    drowsinessStatusIcon.setColorFilter(getResources().getColor(android.R.color.holo_red_light));
-                                    drowsinessStatusText.setText("Driver Status: Drowsy");
-                                    
-                                    // Update Firebase with drowsiness event
-                                    updateDrowsinessEvent(true, timestamp);
-                                } else {
-                                    drowsinessStatusIcon.setImageResource(android.R.drawable.presence_online);
-                                    drowsinessStatusIcon.setColorFilter(getResources().getColor(android.R.color.holo_green_light));
-                                    drowsinessStatusText.setText("Driver Status: Alert");
-                                    
-                                    // Update Firebase with alert status
-                                    updateDrowsinessEvent(false, timestamp);
-                                }
-                            });
-                        } catch (JSONException e) {
-                            e.printStackTrace();
+                            // If we've received a complete frame
+                            if (frameIndex >= CAMERA_FRAME_SIZE) {
+                                // Convert the frame buffer to a bitmap
+                                frameBitmap.copyPixelsFromBuffer(java.nio.ByteBuffer.wrap(frameBuffer));
+                                
+                                // Draw the frame on the surface
+                                runOnUiThread(() -> {
+                                    if (surfaceHolder != null) {
+                                        android.graphics.Canvas canvas = surfaceHolder.lockCanvas();
+                                        if (canvas != null) {
+                                            // Calculate scaling to fit the preview area
+                                            float scale = Math.min(
+                                                (float)canvas.getWidth() / frameBitmap.getWidth(),
+                                                (float)canvas.getHeight() / frameBitmap.getHeight()
+                                            );
+                                            
+                                            // Calculate centering offsets
+                                            float dx = (canvas.getWidth() - frameBitmap.getWidth() * scale) / 2;
+                                            float dy = (canvas.getHeight() - frameBitmap.getHeight() * scale) / 2;
+                                            
+                                            // Clear the canvas
+                                            canvas.drawColor(android.graphics.Color.BLACK);
+                                            
+                                            // Save canvas state, scale and translate, then draw
+                                            canvas.save();
+                                            canvas.translate(dx, dy);
+                                            canvas.scale(scale, scale);
+                                            canvas.drawBitmap(frameBitmap, 0, 0, paint);
+                                            canvas.restore();
+                                            
+                                            surfaceHolder.unlockCanvasAndPost(canvas);
+                                        }
+                                    }
+                                });
+                                
+                                // Reset frame buffer index
+                                frameIndex = 0;
+                            }
                         }
                     }
                 } catch (Exception e) {
@@ -384,5 +478,221 @@ public class Dashboard extends AppCompatActivity implements SurfaceHolder.Callba
                 }
             }
         });
+    }
+
+    private void connectToServer(String ipAddress, int port) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Connecting to Server");
+        builder.setMessage("Connecting to laptop server...");
+        AlertDialog dialog = builder.create();
+        dialog.show();
+
+        networkExecutor.execute(() -> {
+            try {
+                Socket socket = new Socket(ipAddress, port);
+                isStreaming = true;
+                InputStream inputStream = socket.getInputStream();
+                runOnUiThread(() -> {
+                    dialog.dismiss();
+                    Toast.makeText(Dashboard.this, "Connected to server", Toast.LENGTH_SHORT).show();
+                });
+                startStreaming(inputStream);
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    dialog.dismiss();
+                    Toast.makeText(Dashboard.this, "Connection failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                });
+            }
+        });
+    }
+
+
+    private void startStreaming(InputStream inputStream) {
+        streamThread = new Thread(() -> {
+            byte[] buffer = new byte[BUFFER_SIZE];
+            StringBuilder jsonBuilder = new StringBuilder();
+            boolean inJson = false;
+
+            try {
+                while (isStreaming) {
+                    int bytesRead = inputStream.read(buffer);
+                    if (bytesRead <= 0) break;
+
+                    // Process the received data
+                    for (int i = 0; i < bytesRead; i++) {
+                        if (buffer[i] == '{') {
+                            inJson = true;
+                            jsonBuilder.setLength(0);
+                        }
+
+                        if (inJson) {
+                            jsonBuilder.append((char) buffer[i]);
+                            if (buffer[i] == '}') {
+                                // Process complete JSON message
+                                processJsonMessage(jsonBuilder.toString());
+                                inJson = false;
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                if (isStreaming) {
+                    runOnUiThread(() -> {
+                        Toast.makeText(Dashboard.this, "Stream error: " + e.getMessage(),
+                                Toast.LENGTH_SHORT).show();
+                    });
+                    isStreaming = false;
+                }
+            } finally {
+                try {
+                    inputStream.close();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+        streamThread.start();
+    }
+
+
+    private void processJsonMessage(String jsonStr) {
+        try {
+            JSONObject data = new JSONObject(jsonStr);
+            boolean isEyesClosed = data.getBoolean("is_eyes_closed");
+            long timestamp = data.optLong("timestamp", System.currentTimeMillis());
+
+            runOnUiThread(() -> {
+                if (isEyesClosed) {
+                    drowsinessStatusIcon.setImageResource(android.R.drawable.presence_busy);
+                    drowsinessStatusIcon.setColorFilter(getResources().getColor(android.R.color.holo_red_light));
+                    drowsinessStatusText.setText("Driver Status: Drowsy");
+                    updateDrowsinessEvent(true, timestamp);
+                } else {
+                    drowsinessStatusIcon.setImageResource(android.R.drawable.presence_online);
+                    drowsinessStatusIcon.setColorFilter(getResources().getColor(android.R.color.holo_green_light));
+                    drowsinessStatusText.setText("Driver Status: Alert");
+                    updateDrowsinessEvent(false, timestamp);
+                }
+            });
+
+            String frameBase64 = data.optString("frame", null);
+            if (frameBase64 != null) {
+                byte[] imageBytes = Base64.decode(frameBase64, Base64.DEFAULT);
+                Bitmap bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.length);
+                if (bitmap != null) {
+                    runOnUiThread(() -> {
+                        if (surfaceHolder != null) {
+                            Canvas canvas = surfaceHolder.lockCanvas();
+                            if (canvas != null) {
+                                float scale = Math.min(
+                                        (float) canvas.getWidth() / bitmap.getWidth(),
+                                        (float) canvas.getHeight() / bitmap.getHeight()
+                                );
+                                float dx = (canvas.getWidth() - bitmap.getWidth() * scale) / 2;
+                                float dy = (canvas.getHeight() - bitmap.getHeight() * scale) / 2;
+
+                                ((Canvas) canvas).drawColor(Color.BLACK);
+                                canvas.save();
+                                canvas.translate(dx, dy);
+                                canvas.scale(scale, scale);
+                                canvas.drawBitmap(bitmap, 0, 0, null);
+                                canvas.restore();
+
+                                surfaceHolder.unlockCanvasAndPost(canvas);
+                            }
+                            bitmap.recycle();
+                        }
+                    });
+                }
+            }
+
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+    }
+
+
+    private void processImageData(byte[] imageData) {
+        try {
+            Bitmap bitmap = BitmapFactory.decodeByteArray(imageData, 0, imageData.length);
+            if (bitmap != null) {
+                runOnUiThread(() -> {
+                    if (surfaceHolder != null) {
+                        android.graphics.Canvas canvas = surfaceHolder.lockCanvas();
+                        if (canvas != null) {
+                            // Calculate scaling to fit the preview area
+                            float scale = Math.min(
+                                (float)canvas.getWidth() / bitmap.getWidth(),
+                                (float)canvas.getHeight() / bitmap.getHeight()
+                            );
+                            
+                            // Calculate centering offsets
+                            float dx = (canvas.getWidth() - bitmap.getWidth() * scale) / 2;
+                            float dy = (canvas.getHeight() - bitmap.getHeight() * scale) / 2;
+                            
+                            // Clear the canvas
+                            canvas.drawColor(android.graphics.Color.BLACK);
+                            
+                            // Save canvas state, scale and translate, then draw
+                            canvas.save();
+                            canvas.translate(dx, dy);
+                            canvas.scale(scale, scale);
+                            canvas.drawBitmap(bitmap, 0, 0, null);
+                            canvas.restore();
+                            
+                            surfaceHolder.unlockCanvasAndPost(canvas);
+                        }
+                        bitmap.recycle();
+                    }
+                });
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void showServerConnectionDialog() {
+        // Inflate the dialog layout
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_prototype_connection, null);
+        TextInputEditText ipAddressInput = dialogView.findViewById(R.id.ipAddressInput);
+        TextInputEditText portInput = dialogView.findViewById(R.id.portInput);
+
+        // Set default values
+        ipAddressInput.setText("192.168.56.1");  // Default IP
+        portInput.setText("12345");  // Default port
+
+        // Create and show the dialog
+        new AlertDialog.Builder(this)
+            .setTitle("Connect to Laptop Server")
+            .setView(dialogView)
+                .setPositiveButton("Connect", (dialog, which) -> {
+                    String ipAddress = ipAddressInput.getText().toString();
+                    String portStr = portInput.getText().toString();
+                    if (!ipAddress.isEmpty() && !portStr.isEmpty()) {
+                        int port = Integer.parseInt(portStr);
+                        connectToServer(ipAddress, port);  // Call socket version
+                    } else {
+                        Toast.makeText(this, "Please enter both IP address and port", Toast.LENGTH_SHORT).show();
+                    }
+
+
+            })
+            .setNegativeButton("Cancel", null)
+            .show();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        isStreaming = false;
+        if (streamThread != null) {
+            streamThread.interrupt();
+        }
+        if (connection != null) {
+            connection.disconnect();
+        }
+        if (networkExecutor != null) {
+            networkExecutor.shutdown();
+        }
     }
 } 
