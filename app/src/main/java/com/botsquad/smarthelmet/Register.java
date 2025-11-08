@@ -86,7 +86,7 @@ public class Register extends AppCompatActivity {
         buttonReg.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                progressBar.setVisibility(View.VISIBLE);
+                progressBar.setVisibility(View.GONE); // Hide progress bar since we're navigating to OTP
                 String firstName, lastName, email, password, contact;
                 
                 firstName = String.valueOf(editTextFirstName.getText());
@@ -117,46 +117,25 @@ public class Register extends AppCompatActivity {
                     return;
                 }
 
-                mAuth.createUserWithEmailAndPassword(email, password)
-                        .addOnCompleteListener(new OnCompleteListener<AuthResult>() {
-                            @Override
-                            public void onComplete(@NonNull Task<AuthResult> task) {
-                                progressBar.setVisibility(View.GONE);
-                                if (task.isSuccessful()) {
-                                    // Get the user ID
-                                    String userId = mAuth.getCurrentUser().getUid();
-                                    
-                                    // Create user data map
-                                    Map<String, Object> userData = new HashMap<>();
-                                    userData.put("firstName", firstName);
-                                    userData.put("lastName", lastName);
-                                    userData.put("email", email);
-                                    userData.put("contactNumber", contact);
-
-                                    // Save user data to Firebase Database
-                                    mDatabase.child("users").child(userId).setValue(userData)
-                                            .addOnCompleteListener(new OnCompleteListener<Void>() {
-                                                @Override
-                                                public void onComplete(@NonNull Task<Void> task) {
-                                                    if (task.isSuccessful()) {
-                                                        Toast.makeText(Register.this, "Account created successfully.",
-                                                                Toast.LENGTH_SHORT).show();
-                                                        // Navigate to dashboard
-                                                        Intent intent = new Intent(getApplicationContext(), Dashboard.class);
-                                                        startActivity(intent);
-                                                        finish();
-                                                    } else {
-                                                        Toast.makeText(Register.this, "Failed to save user data.",
-                                                                Toast.LENGTH_SHORT).show();
-                                                    }
-                                                }
-                                            });
-                                } else {
-                                    Toast.makeText(Register.this, "Authentication failed: " + task.getException().getMessage(),
-                                            Toast.LENGTH_SHORT).show();
-                                }
-                            }
-                        });
+                // Validate phone number format
+                if (!contact.startsWith("+")) {
+                    contact = "+" + contact;
+                }
+                
+                // Debug: Log the phone number being passed
+                android.util.Log.d("Register", "Formatted phone number: " + contact);
+                Toast.makeText(Register.this, "Phone number: " + contact, Toast.LENGTH_LONG).show();
+                
+                // Navigate to OTP verification
+                Intent intent = new Intent(getApplicationContext(), OTPVerificationActivity.class);
+                intent.putExtra("phoneNumber", contact);
+                intent.putExtra("firstName", firstName);
+                intent.putExtra("lastName", lastName);
+                intent.putExtra("email", email);
+                intent.putExtra("password", password);
+                intent.putExtra("contact", contact);
+                startActivity(intent);
+                finish();
             }
         });
 

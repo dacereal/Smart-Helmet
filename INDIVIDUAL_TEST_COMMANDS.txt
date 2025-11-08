@@ -1,0 +1,66 @@
+================================================================================
+INDIVIDUAL TEST COMMANDS - Copy and run each command separately
+(For Android projects, use testDebugUnitTest)
+================================================================================
+
+[Case-001] Register with valid input
+./gradlew :app:testDebugUnitTest --tests "com.botsquad.smarthelmet.RegisterTest.testCase001_RegisterWithValidInput"
+
+[Case-002] Login with valid credentials
+./gradlew :app:testDebugUnitTest --tests "com.botsquad.smarthelmet.LoginTest.testCase002_LoginWithValidCredentials"
+
+[Case-003] Login validation with empty fields
+./gradlew :app:testDebugUnitTest --tests "com.botsquad.smarthelmet.LoginTest.testCase003_LoginValidationWithEmptyFields"
+
+[Case-004] Open Dashboard after login
+./gradlew :app:testDebugUnitTest --tests "com.botsquad.smarthelmet.DashboardTest.testCase004_DashboardVisibilityAfterLogin"
+
+[Case-005] Automatic Pi Scanning
+./gradlew :app:testDebugUnitTest --tests "com.botsquad.smarthelmet.DevicePairingTest.testCase005_AutomaticPiScanning"
+
+[Case-006] Select Prototype
+./gradlew :app:testDebugUnitTest --tests "com.botsquad.smarthelmet.DevicePairingTest.testCase006_SelectDeviceAndPair"
+
+[Case-007] Connected to SmartHelmet device
+./gradlew :app:testDebugUnitTest --tests "com.botsquad.smarthelmet.DashboardTest.testCase007_DeviceConnectionSuccess"
+
+[Case-008] Live Camera Feed Start
+./gradlew :app:testDebugUnitTest --tests "com.botsquad.smarthelmet.DashboardTest.testCase008_LiveCameraFeedStart"
+
+[Case-009] Drowsiness True
+./gradlew :app:testDebugUnitTest --tests "com.botsquad.smarthelmet.DashboardTest.testCase009_DrowsinessTrue"
+
+[Case-010] Drowsiness False
+./gradlew :app:testDebugUnitTest --tests "com.botsquad.smarthelmet.DashboardTest.testCase010_DrowsinessFalse"
+
+[Case-011] Events Count
+./gradlew :app:testDebugUnitTest --tests "com.botsquad.smarthelmet.DashboardTest.testCase011_EventsCountIncrements"
+
+[Case-012] Last Event Time
+./gradlew :app:testDebugUnitTest --tests "com.botsquad.smarthelmet.DashboardTest.testCase012_LastEventTimeUpdate"
+
+[Case-013] Alarm + Vibrate
+./gradlew :app:testDebugUnitTest --tests "com.botsquad.smarthelmet.DashboardTest.testCase013_AlarmAndVibrateOnDrowsy"
+
+[Case-014] Alert Tones
+./gradlew :app:testDebugUnitTest --tests "com.botsquad.smarthelmet.AlertTonesTest.testCase014_OpenAlertTones"
+
+[Case-015] Change Password
+./gradlew :app:testDebugUnitTest --tests "com.botsquad.smarthelmet.ChangePasswordTest.testCase015_ChangePassword"
+
+[Case-016] View Profile
+./gradlew :app:testDebugUnitTest --tests "com.botsquad.smarthelmet.ProfileTest.testCase016_ViewProfile"
+
+[Case-017] Update Profile
+./gradlew :app:testDebugUnitTest --tests "com.botsquad.smarthelmet.ProfileTest.testCase017_UpdateProfile"
+
+[Case-018] Auto-redirect if authenticated
+./gradlew :app:testDebugUnitTest --tests "com.botsquad.smarthelmet.LoginTest.testCase018_AutoRedirectIfAuthenticated"
+
+[Case-019] Logout
+./gradlew :app:testDebugUnitTest --tests "com.botsquad.smarthelmet.SessionTest.testCase019_Logout"
+
+[Case-020] View List (Drowsiness History)
+./gradlew :app:testDebugUnitTest --tests "com.botsquad.smarthelmet.DrowsinessLogsTest.testCase020_OpenDrowsinessHistory"
+
+================================================================================

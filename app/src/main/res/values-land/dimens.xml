@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Landscape orientation dimensions -->
+    <dimen name="margin_small">6dp</dimen>
+    <dimen name="margin_medium">12dp</dimen>
+    <dimen name="margin_large">18dp</dimen>
+    <dimen name="margin_xlarge">24dp</dimen>
+    
+    <!-- Text sizes for landscape -->
+    <dimen name="text_size_small">11sp</dimen>
+    <dimen name="text_size_medium">13sp</dimen>
+    <dimen name="text_size_large">15sp</dimen>
+    <dimen name="text_size_xlarge">17sp</dimen>
+    <dimen name="text_size_xxlarge">22sp</dimen>
+    <dimen name="text_size_title">26sp</dimen>
+    <dimen name="text_size_header">30sp</dimen>
+    
+    <!-- Button dimensions for landscape -->
+    <dimen name="button_height">44dp</dimen>
+    <dimen name="button_padding">10dp</dimen>
+    
+    <!-- Card dimensions for landscape -->
+    <dimen name="card_corner_radius">10dp</dimen>
+    <dimen name="card_elevation">3dp</dimen>
+    <dimen name="card_padding">12dp</dimen>
+    
+    <!-- Icon sizes for landscape -->
+    <dimen name="icon_size_small">14dp</dimen>
+    <dimen name="icon_size_medium">20dp</dimen>
+    <dimen name="icon_size_large">28dp</dimen>
+    <dimen name="icon_size_xlarge">40dp</dimen>
+</resources>

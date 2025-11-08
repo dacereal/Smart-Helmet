@@ -7,24 +7,32 @@
     android:background="#f8f8f8"
     tools:context=".Login">
 
-    <!-- Logo -->
+    <!-- Logo (responsive) -->
     <ImageView
         android:id="@+id/logoImage"
-        android:layout_width="150dp"
-        android:layout_height="150dp"
-        android:layout_marginTop="32dp"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="16dp"
+        android:layout_marginStart="32dp"
+        android:layout_marginEnd="32dp"
         android:src="@drawable/smart_helmet"
+        android:scaleType="centerInside"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintWidth_percent="0.4"
+        app:layout_constraintDimensionRatio="1:1"/>
 
-    <!-- Curved Card/Form Area -->
+    <!-- Curved Card/Form Area (responsive) -->
     <androidx.cardview.widget.CardView
         android:id="@+id/loginCard"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:layout_marginTop="16dp"
-        app:cardCornerRadius="40dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="16dp"
+        app:cardCornerRadius="24dp"
         app:cardElevation="0dp"
         app:cardBackgroundColor="#A9C9C3"
         app:layout_constraintTop_toBottomOf="@id/logoImage"

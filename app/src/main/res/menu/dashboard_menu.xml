@@ -8,14 +8,15 @@
         app:showAsAction="never"/>
 
     <item
-        android:id="@+id/menu_manage_pairing"
-        android:title="Manage Device Pairing"
-        app:showAsAction="never"/>
-
-    <item
         android:id="@+id/menu_alert_tones"
         android:title="@string/alert_tones"
         android:icon="@android:drawable/ic_lock_idle_alarm"
+        app:showAsAction="never"/>
+
+    <item
+        android:id="@+id/menu_drowsiness_logs"
+        android:title="Drowsiness Logs"
+        android:icon="@android:drawable/ic_menu_recent_history"
         app:showAsAction="never"/>
 
     <item
@@ -24,14 +25,14 @@
         app:showAsAction="never"/>
 
     <item
+        android:id="@+id/menu_set_pi_server"
+        android:title="Set Pi Server"
+        android:icon="@android:drawable/ic_menu_edit"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/menu_logout"
         android:title="Logout"
         app:showAsAction="never"/>
-
-    <item
-        android:id="@+id/menu_connect_server"
-        android:title="Connect to Laptop"
-        android:icon="@android:drawable/ic_menu_share"
-        app:showAsAction="never" />
 
 </menu> 

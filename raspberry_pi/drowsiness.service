@@ -1,0 +1,16 @@
+[Unit]
+Description=Drowsiness Detection Service for Smart Helmet
+After=network.target
+
+[Service]
+Type=simple
+User=smarthelmet
+WorkingDirectory=/home/smarthelmet/smart_helmet_pi
+Environment="PATH=/home/smarthelmet/smart_helmet_pi/venv/bin"
+ExecStart=/home/smarthelmet/smart_helmet_pi/venv/bin/python3 /home/smarthelmet/smart_helmet_pi/drowsiness_server.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+

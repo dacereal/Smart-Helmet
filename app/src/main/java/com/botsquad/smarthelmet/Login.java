@@ -38,7 +38,16 @@ public class Login extends AppCompatActivity {
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_login);
 
-        mAuth = FirebaseAuth.getInstance();
+        // Initialize Firebase in background thread to prevent ANR
+        new Thread(() -> {
+            try {
+                mAuth = FirebaseAuth.getInstance();
+                Log.d("Login", "Firebase Auth initialized");
+            } catch (Exception e) {
+                Log.e("Login", "Firebase initialization failed: " + e.getMessage(), e);
+            }
+        }).start();
+
         editTextEmail = findViewById(R.id.email);
         editTextPassword = findViewById(R.id.password);
         buttonLogin = findViewById(R.id.btn_login);
@@ -57,6 +66,8 @@ public class Login extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 progressBar.setVisibility(View.VISIBLE);
+                buttonLogin.setEnabled(false); // Disable button to prevent multiple clicks
+                
                 String email, password;
                 email = String.valueOf(editTextEmail.getText()).trim();
                 password = String.valueOf(editTextPassword.getText()).trim();
@@ -64,12 +75,14 @@ public class Login extends AppCompatActivity {
                 if(TextUtils.isEmpty(email)) {
                     Toast.makeText(Login.this, "Enter email or username", Toast.LENGTH_SHORT).show();
                     progressBar.setVisibility(View.GONE);
+                    buttonLogin.setEnabled(true);
                     return;
                 }
 
                 if(TextUtils.isEmpty(password)) {
                     Toast.makeText(Login.this, "Enter password", Toast.LENGTH_SHORT).show();
                     progressBar.setVisibility(View.GONE);
+                    buttonLogin.setEnabled(true);
                     return;
                 }
 
@@ -80,27 +93,58 @@ public class Login extends AppCompatActivity {
                     startActivity(intent);
                     finish();
                 } else {
-                    // Proceed with Firebase authentication for regular users
-                    mAuth.signInWithEmailAndPassword(email, password)
-                            .addOnCompleteListener(new OnCompleteListener<AuthResult>() {
-                                @Override
-                                public void onComplete(@NonNull Task<AuthResult> task) {
+                    // Wait for Firebase to initialize if not ready
+                    if (mAuth == null) {
+                        new Thread(() -> {
+                            while (mAuth == null) {
+                                try {
+                                    Thread.sleep(100);
+                                } catch (InterruptedException e) {
+                                    break;
+                                }
+                            }
+                            runOnUiThread(() -> {
+                                if (mAuth != null) {
+                                    performLogin(email, password);
+                                } else {
+                                    Toast.makeText(Login.this, "Authentication service not ready", Toast.LENGTH_SHORT).show();
                                     progressBar.setVisibility(View.GONE);
-                                    if (task.isSuccessful()) {
-                                        Toast.makeText(Login.this, "Login Successful",
-                                                Toast.LENGTH_SHORT).show();
-                                        Intent intent = new Intent(getApplicationContext(), Dashboard.class);
-                                        startActivity(intent);
-                                        finish();
-                                    } else {
-                                        Toast.makeText(Login.this, "Authentication failed.",
-                                                Toast.LENGTH_SHORT).show();
-                                    }
+                                    buttonLogin.setEnabled(true);
                                 }
                             });
+                        }).start();
+                    } else {
+                        performLogin(email, password);
+                    }
                 }
-
             }
         });
+    }
+
+    private void performLogin(String email, String password) {
+        mAuth.signInWithEmailAndPassword(email, password)
+                .addOnCompleteListener(new OnCompleteListener<AuthResult>() {
+                    @Override
+                    public void onComplete(@NonNull Task<AuthResult> task) {
+                        progressBar.setVisibility(View.GONE);
+                        buttonLogin.setEnabled(true);
+                        
+                        if (task.isSuccessful()) {
+                            Toast.makeText(Login.this, "Login Successful",
+                                    Toast.LENGTH_SHORT).show();
+                            Intent intent = new Intent(getApplicationContext(), Dashboard.class);
+                            startActivity(intent);
+                            finish();
+                        } else {
+                            String errorMessage = "Authentication failed.";
+                            if (task.getException() != null) {
+                                errorMessage = task.getException().getMessage();
+                            }
+                            Toast.makeText(Login.this, errorMessage,
+                                    Toast.LENGTH_LONG).show();
+                            Log.e("Login", "Authentication failed: " + task.getException());
+                        }
+                    }
+                });
     }
 }

@@ -1,0 +1,31 @@
+# Drowsiness Detection Service Requirements for Raspberry Pi 5
+# Install with: pip3 install -r requirements.txt
+# NOTE: opencv-python is installed via system package (python3-opencv)
+#       during setup.sh - it's faster and more reliable than pip install
+
+# ONNX Runtime (optimized for ARM64)
+onnxruntime>=1.16.0
+
+# OpenCV for image processing - Use system package instead of pip
+# System package installed via: sudo apt-get install python3-opencv
+# If you need pip version, uncomment below (SLOW - ~45MB download):
+# opencv-python>=4.8.0
+
+# Flask for REST API
+flask>=3.0.0
+flask-cors>=4.0.0
+
+# NumPy for array operations
+numpy>=1.24.0
+
+# Raspberry Pi Camera support
+picamera2>=0.3.12  # Modern Pi Camera library
+# Note: On older Pi OS, you may need to use legacy picamera instead
+
+# GPIO control for vibration motor
+gpiozero>=1.6.2  # Modern GPIO library (preferred)
+# Alternative: RPi.GPIO>=0.7.0  # Legacy GPIO library (fallback)
+
+# Optional: For better performance
+# Pillow>=10.0.0  # Alternative image processing library
+
