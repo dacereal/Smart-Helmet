@@ -32,11 +32,11 @@ public class DrowsinessLogsActivity extends AppCompatActivity {
     private Button sortButton;
     private ArrayAdapter<String> logsAdapter;
     private List<String> logsList;
-    private List<Long> timestampsList; // Store timestamps for proper sorting
+    private List<Long> timestampsList;
     private DatabaseReference mDatabase;
     private FirebaseAuth mAuth;
     private String currentUserId;
-    private boolean isLatestFirst = false; 
+    private boolean isLatestFirst = false;
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {

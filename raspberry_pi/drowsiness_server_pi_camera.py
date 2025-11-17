@@ -60,10 +60,13 @@ capture_thread = None
 is_capturing = False
 
 # Vibration motor control
-VIBRATION_GPIO_PIN = 12  
+VIBRATION_GPIO_PIN = 18
 vibration_motor = None
 vibration_timer_active = False
+
+
 vibration_start_time = 0
+vibration_is_active = False  # Track if vibration is currently running
 DROWSINESS_THRESHOLD_MS = 1500  # 1.5 seconds before activating vibration
 vibration_lock = threading.Lock()
 
@@ -95,17 +98,21 @@ def start_vibration():
     """Start the vibration motor"""
     global vibration_motor
     if not GPIO_AVAILABLE:
+        logger.warning("GPIO not available - cannot start vibration")
         return
     
     try:
         if 'GPIO_LEGACY' in globals() and GPIO_LEGACY:
             GPIO.output(VIBRATION_GPIO_PIN, GPIO.HIGH)
+            logger.info(f"✅ Vibration motor STARTED on GPIO {VIBRATION_GPIO_PIN} (HIGH)")
         else:
             if vibration_motor is not None:
                 vibration_motor.on()
-        logger.debug("Vibration motor started")
+                logger.info(f"✅ Vibration motor STARTED on GPIO {VIBRATION_GPIO_PIN}")
+            else:
+                logger.error("Vibration motor device is None - not initialized")
     except Exception as e:
-        logger.error(f"Error starting vibration motor: {e}")
+        logger.error(f"❌ Error starting vibration motor: {e}", exc_info=True)
 
 def stop_vibration():
     """Stop the vibration motor"""
@@ -116,38 +123,48 @@ def stop_vibration():
     try:
         if 'GPIO_LEGACY' in globals() and GPIO_LEGACY:
             GPIO.output(VIBRATION_GPIO_PIN, GPIO.LOW)
+            logger.info(f"🛑 Vibration motor STOPPED on GPIO {VIBRATION_GPIO_PIN} (LOW)")
         else:
             if vibration_motor is not None:
                 vibration_motor.off()
-        logger.debug("Vibration motor stopped")
+                logger.info(f"🛑 Vibration motor STOPPED on GPIO {VIBRATION_GPIO_PIN}")
     except Exception as e:
-        logger.error(f"Error stopping vibration motor: {e}")
+        logger.error(f"❌ Error stopping vibration motor: {e}", exc_info=True)
 
 def handle_vibration_control(is_drowsy):
     """Handle vibration motor control with 1.5 second delay"""
-    global vibration_timer_active, vibration_start_time
+    global vibration_timer_active, vibration_start_time, vibration_is_active
     
     with vibration_lock:
+        current_time = time.time() * 1000  # Convert to milliseconds
+        
         if is_drowsy:
-            current_time = time.time() * 1000  # Convert to milliseconds
-            
             if not vibration_timer_active:
                 # Start the 1.5-second timer
                 vibration_timer_active = True
                 vibration_start_time = current_time
-                logger.debug("Vibration timer started - waiting 1.5 seconds")
-            else:
+                vibration_is_active = False
+                logger.info(f"⏱️ Vibration timer started - waiting 1.5 seconds (is_drowsy={is_drowsy})")
+            elif not vibration_is_active:
                 # Timer is already active, check if 1.5 seconds have passed
                 elapsed = current_time - vibration_start_time
                 if elapsed >= DROWSINESS_THRESHOLD_MS:
-                    # 1.5 seconds have passed, start vibration
+                    # 1.5 seconds have passed, start vibration (only once)
+                    logger.info(f"⏰ 1.5 seconds elapsed ({elapsed:.0f}ms) - ACTIVATING VIBRATION MOTOR")
                     start_vibration()
+                    vibration_is_active = True
+            # If vibration_is_active is True, keep it running (don't do anything)
         else:
             # Eyes are open - immediately stop vibration and cancel timer
-            if vibration_timer_active:
-                vibration_timer_active = False
-                vibration_start_time = 0
-            stop_vibration()
+            if vibration_timer_active or vibration_is_active:
+                if vibration_timer_active:
+                    logger.info("👁️ Eyes opened - cancelling vibration timer")
+                    vibration_timer_active = False
+                    vibration_start_time = 0
+                if vibration_is_active:
+                    logger.info("👁️ Eyes opened - stopping vibration motor")
+                    vibration_is_active = False
+                    stop_vibration()
 
 def init_detector():
     """Initialize the drowsiness detector"""
@@ -252,6 +269,7 @@ def capture_and_detect():
     
     is_capturing = True
     logger.info("Starting camera capture thread")
+    frame_counter = 0
     
     while is_capturing:
         try:
@@ -294,7 +312,17 @@ def capture_and_detect():
                         current_result = result
                     
                     # Control vibration motor based on detection result
-                    handle_vibration_control(result.get('is_drowsy', False))
+                    is_drowsy = result.get('is_drowsy', False)
+                    confidence = result.get('confidence', 0.0)
+                    
+                    frame_counter += 1
+                    
+                    # Log detection result periodically (every 25 frames = ~5 seconds at 5 FPS)
+                    if frame_counter % 25 == 0:
+                        logger.info(f"Detection status: is_drowsy={is_drowsy}, confidence={confidence:.2f}, frame={frame_counter}")
+                    
+                    # Control vibration motor
+                    handle_vibration_control(is_drowsy)
                 except Exception as e:
                     logger.error(f"Detection error on frame: {e}")
                     # Keep previous result if detection fails
@@ -434,6 +462,56 @@ def get_detection_simple():
             'is_drowsy': current_result.get('is_drowsy', False),
             'confidence': current_result.get('confidence', 0.0)
         })
+
+@app.route('/test_vibration', methods=['GET'])
+def test_vibration_endpoint():
+    """
+    Test endpoint to manually trigger vibration motor
+    Useful for debugging wiring issues
+    """
+    try:
+        if not GPIO_AVAILABLE:
+            return jsonify({
+                'error': 'GPIO not available',
+                'message': 'Install gpiozero: pip install gpiozero'
+            }), 500
+        
+        # Start vibration for 2 seconds
+        logger.info("Manual vibration test - starting for 2 seconds")
+        start_vibration()
+        time.sleep(2)
+        stop_vibration()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Vibration test completed - motor should have vibrated for 2 seconds',
+            'gpio_pin': VIBRATION_GPIO_PIN
+        })
+    except Exception as e:
+        logger.error(f"Error in vibration test: {e}", exc_info=True)
+        return jsonify({
+            'error': str(e),
+            'gpio_pin': VIBRATION_GPIO_PIN
+        }), 500
+
+@app.route('/vibration_status', methods=['GET'])
+def get_vibration_status():
+    """
+    Get current vibration and detection status for debugging
+    """
+    with vibration_lock:
+        with result_lock:
+            return jsonify({
+                'vibration_timer_active': vibration_timer_active,
+                'vibration_is_active': vibration_is_active,
+                'vibration_start_time': vibration_start_time,
+                'current_time_ms': time.time() * 1000,
+                'elapsed_ms': (time.time() * 1000) - vibration_start_time if vibration_timer_active else 0,
+                'threshold_ms': DROWSINESS_THRESHOLD_MS,
+                'gpio_pin': VIBRATION_GPIO_PIN,
+                'current_detection': current_result if current_result else None,
+                'gpio_available': GPIO_AVAILABLE
+            })
 
 if __name__ == '__main__':
     # Initialize detector

@@ -19,3 +19,6 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Keep MyApplication class to prevent ClassNotFoundException
+-keep public class com.botsquad.smarthelmet.MyApplication { *; }

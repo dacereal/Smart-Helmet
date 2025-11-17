@@ -13,9 +13,15 @@ import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.media.MediaPlayer;
+import android.media.RingtoneManager;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Build;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.os.VibratorManager;
 import android.util.Base64;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -40,6 +46,7 @@ import androidx.core.content.ContextCompat;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
@@ -58,10 +65,12 @@ import java.net.URL;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.UUID;
 import java.net.Socket;
+import java.util.Map;
 
 
 public class Dashboard extends AppCompatActivity implements SurfaceHolder.Callback {
@@ -87,6 +96,8 @@ public class Dashboard extends AppCompatActivity implements SurfaceHolder.Callba
 
     private DatabaseReference mDatabase;
     private FirebaseAuth mAuth;
+    private DatabaseReference userHelmetStatusRef;
+    private String currentUserId;
     private PiDrowsinessDetector piDrowsinessDetector;
     private boolean isPiConnected = false;  // Track if Pi is connected
     private ExecutorService inferenceExecutor;
@@ -135,6 +146,118 @@ public class Dashboard extends AppCompatActivity implements SurfaceHolder.Callba
     // Using Raspberry Pi 5 with Raspberry Pi Camera for drowsiness detection
     private ExecutorService networkExecutor;
 
+    // Vibration
+    private Vibrator getVibrator() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            VibratorManager vm = (VibratorManager) getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
+            return vm != null ? vm.getDefaultVibrator() : null;
+        } else {
+            return (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+        }
+    }
+
+    private void startVibrationForTone(String toneName) {
+        try {
+            Vibrator vibrator = getVibrator();
+            if (vibrator == null || !vibrator.hasVibrator()) return;
+
+            // Patterns tuned to tone names; all looped to match MediaPlayer looping
+            long[] timings;
+            int[] amplitudes;
+            int repeatIndex = 0;
+
+            switch (toneName) {
+                case "Pulse Alert":
+                    // 400ms on, 200ms off repeating
+                    timings = new long[]{0, 400, 200};
+                    amplitudes = new int[]{0, VibrationEffect.DEFAULT_AMPLITUDE, 0};
+                    break;
+                case "Continuous Beep":
+                    // Stronger continuous vibration with brief refresh gaps
+                    timings = new long[]{0, 800, 50};
+                    amplitudes = new int[]{0, VibrationEffect.DEFAULT_AMPLITUDE, 0};
+                    break;
+                case "Emergency Siren":
+                    // Ramp effect: short pulses
+                    timings = new long[]{0, 300, 150, 300, 150};
+                    amplitudes = new int[]{0, 255, 0, 200, 0};
+                    break;
+                default:
+                    // Default: 500ms on, 500ms off
+                    timings = new long[]{0, 500, 500};
+                    amplitudes = new int[]{0, VibrationEffect.DEFAULT_AMPLITUDE, 0};
+                    break;
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                VibrationEffect effect = VibrationEffect.createWaveform(timings, amplitudes, repeatIndex);
+                vibrator.vibrate(effect);
+            } else {
+                // Legacy: timings only; first value is delay
+                vibrator.vibrate(timings, repeatIndex);
+            }
+        } catch (Exception ignore) {
+            // Avoid crashing the alert flow if vibration fails
+        }
+    }
+
+    private void stopVibration() {
+        try {
+            Vibrator vibrator = getVibrator();
+            if (vibrator != null) {
+                vibrator.cancel();
+            }
+        } catch (Exception ignore) {
+        }
+    }
+
+    private Uri selectToneUriDistinct(Context context, String toneName) {
+        try {
+            switch (toneName) {
+                case "Default Beep":
+                    return android.provider.Settings.System.DEFAULT_NOTIFICATION_URI;
+                case "High Pitch Alert":
+                    return pickRingtone(context, RingtoneManager.TYPE_ALARM, 0);
+                case "Low Pitch Warning":
+                    return pickRingtone(context, RingtoneManager.TYPE_ALARM, 1);
+                case "Pulse Alert":
+                    return pickRingtone(context, RingtoneManager.TYPE_NOTIFICATION, 1);
+                case "Emergency Siren":
+                    return pickRingtone(context, RingtoneManager.TYPE_RINGTONE, 0);
+                default:
+                    return android.provider.Settings.System.DEFAULT_NOTIFICATION_URI;
+            }
+        } catch (Exception e) {
+            return android.provider.Settings.System.DEFAULT_NOTIFICATION_URI;
+        }
+    }
+
+    private Uri pickRingtone(Context context, int type, int index) {
+        RingtoneManager rm = new RingtoneManager(this);
+        rm.setType(type);
+        android.database.Cursor cursor = rm.getCursor();
+        if (cursor != null) {
+            try {
+                if (cursor.moveToFirst()) {
+                    int count = 0;
+                    do {
+                        if (count == index) {
+                            return rm.getRingtoneUri(cursor.getPosition());
+                        }
+                        count++;
+                    } while (cursor.moveToNext());
+                    cursor.moveToFirst();
+                    return rm.getRingtoneUri(cursor.getPosition());
+                }
+            } finally {
+                cursor.close();
+            }
+        }
+        if (type == RingtoneManager.TYPE_ALARM) return android.provider.Settings.System.DEFAULT_ALARM_ALERT_URI;
+        if (type == RingtoneManager.TYPE_RINGTONE) return android.provider.Settings.System.DEFAULT_RINGTONE_URI;
+        return android.provider.Settings.System.DEFAULT_NOTIFICATION_URI;
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         try {
@@ -147,6 +270,13 @@ public class Dashboard extends AppCompatActivity implements SurfaceHolder.Callba
             // Initialize basic components on main thread (lightweight operations only)
             mAuth = FirebaseAuth.getInstance();
             mDatabase = FirebaseDatabase.getInstance().getReference();
+            FirebaseUser firebaseUser = mAuth.getCurrentUser();
+            if (firebaseUser != null) {
+                currentUserId = firebaseUser.getUid();
+            } else {
+                currentUserId = null;
+                android.util.Log.w("Dashboard", "No authenticated user found while initializing Dashboard");
+            }
             sharedPreferences = getSharedPreferences("SmartHelmetPrefs", Context.MODE_PRIVATE);
             setPiServerUrl(sharedPreferences.getString(PREF_PI_SERVER_URL, DEFAULT_PI_SERVER_URL), false, false);
             android.util.Log.d("Dashboard", "Loaded Pi server URL: " + piServerUrl);
@@ -1199,43 +1329,141 @@ public class Dashboard extends AppCompatActivity implements SurfaceHolder.Callba
 
     private void initializeFirebaseData() {
         try {
-            // For prototype-based system, we should respect existing data
-            // Only initialize missing specific fields, don't overwrite existing prototype data
-            DatabaseReference helmetStatusRef = mDatabase.child("helmet_status");
-            
-            // Check individual fields and only set defaults for missing ones
-            helmetStatusRef.child("is_drowsy").get().addOnCompleteListener(task -> {
-                if (task.isSuccessful() && !task.getResult().exists()) {
-                    helmetStatusRef.child("is_drowsy").setValue(false);
-                    android.util.Log.d("Dashboard", "Initialized missing is_drowsy field");
+            final DatabaseReference helmetStatusRef = getHelmetStatusRef();
+            if (helmetStatusRef == null) {
+                android.util.Log.w("Dashboard", "Helmet status reference is null - skipping initialization");
+                return;
+            }
+
+            helmetStatusRef.get().addOnCompleteListener(task -> {
+                if (task.isSuccessful()) {
+                    DataSnapshot snapshot = task.getResult();
+                    if (snapshot == null || !snapshot.exists()) {
+                        migrateLegacyHelmetStatus(helmetStatusRef);
+                    } else {
+                        ensureHelmetStatusFields(helmetStatusRef);
+                    }
+                } else {
+                    android.util.Log.w("Dashboard", "Failed to fetch helmet status for initialization: " +
+                            (task.getException() != null ? task.getException().getMessage() : "unknown error"));
+                    ensureHelmetStatusFields(helmetStatusRef);
                 }
             });
-            
-            helmetStatusRef.child("alarm_active").get().addOnCompleteListener(task -> {
-                if (task.isSuccessful() && !task.getResult().exists()) {
-                    helmetStatusRef.child("alarm_active").setValue(false);
-                    android.util.Log.d("Dashboard", "Initialized missing alarm_active field");
-                }
-            });
-            
-            helmetStatusRef.child("events_count").get().addOnCompleteListener(task -> {
-                if (task.isSuccessful() && !task.getResult().exists()) {
-                    helmetStatusRef.child("events_count").setValue(0);
-                    android.util.Log.d("Dashboard", "Initialized missing events_count field");
-                }
-            });
-            
-            helmetStatusRef.child("last_event").get().addOnCompleteListener(task -> {
-                if (task.isSuccessful() && !task.getResult().exists()) {
-                    helmetStatusRef.child("last_event").setValue("No events yet");
-                    android.util.Log.d("Dashboard", "Initialized missing last_event field");
-                }
-            });
-            
-            android.util.Log.d("Dashboard", "Data initialization check completed - preserved existing prototype data");
         } catch (Exception e) {
             android.util.Log.e("Dashboard", "Error initializing Firebase data: " + e.getMessage(), e);
         }
+    }
+
+    private DatabaseReference getHelmetStatusRef() {
+        if (mDatabase == null) {
+            return null;
+        }
+
+        if (userHelmetStatusRef != null) {
+            return userHelmetStatusRef;
+        }
+
+        String uid = currentUserId;
+        if (uid == null && mAuth != null) {
+            FirebaseUser user = mAuth.getCurrentUser();
+            if (user != null) {
+                uid = user.getUid();
+                currentUserId = uid;
+            }
+        }
+
+        if (uid != null) {
+            userHelmetStatusRef = mDatabase.child("users").child(uid).child("helmet_status");
+        } else {
+            android.util.Log.w("Dashboard", "No user id available - falling back to legacy helmet_status node");
+            userHelmetStatusRef = mDatabase.child("helmet_status");
+        }
+
+        return userHelmetStatusRef;
+    }
+
+    private void migrateLegacyHelmetStatus(DatabaseReference helmetStatusRef) {
+        if (helmetStatusRef == null || mDatabase == null) {
+            return;
+        }
+
+        mDatabase.child("helmet_status").get().addOnCompleteListener(legacyTask -> {
+            boolean migrated = false;
+            if (legacyTask.isSuccessful() && legacyTask.getResult() != null && legacyTask.getResult().exists()) {
+                Map<String, Object> legacyData = new HashMap<>();
+                for (DataSnapshot child : legacyTask.getResult().getChildren()) {
+                    legacyData.put(child.getKey(), child.getValue());
+                }
+
+                if (!legacyData.isEmpty()) {
+                    migrated = true;
+                    helmetStatusRef.updateChildren(legacyData).addOnCompleteListener(updateTask -> {
+                        if (!updateTask.isSuccessful()) {
+                            android.util.Log.w("Dashboard", "Failed to migrate legacy helmet_status data: " +
+                                    (updateTask.getException() != null ? updateTask.getException().getMessage() : "unknown error"));
+                        }
+                        ensureHelmetStatusFields(helmetStatusRef);
+                    });
+                }
+            }
+
+            if (!migrated) {
+                setDefaultHelmetStatusValues(helmetStatusRef);
+            }
+        });
+    }
+
+    private void ensureHelmetStatusFields(DatabaseReference helmetStatusRef) {
+        if (helmetStatusRef == null) {
+            return;
+        }
+
+        helmetStatusRef.child("is_drowsy").get().addOnCompleteListener(task -> {
+            if (task.isSuccessful() && (task.getResult() == null || !task.getResult().exists())) {
+                helmetStatusRef.child("is_drowsy").setValue(false);
+                android.util.Log.d("Dashboard", "Initialized missing is_drowsy field");
+            }
+        });
+
+        helmetStatusRef.child("alarm_active").get().addOnCompleteListener(task -> {
+            if (task.isSuccessful() && (task.getResult() == null || !task.getResult().exists())) {
+                helmetStatusRef.child("alarm_active").setValue(false);
+                android.util.Log.d("Dashboard", "Initialized missing alarm_active field");
+            }
+        });
+
+        helmetStatusRef.child("events_count").get().addOnCompleteListener(task -> {
+            if (task.isSuccessful() && (task.getResult() == null || !task.getResult().exists())) {
+                helmetStatusRef.child("events_count").setValue(0);
+                android.util.Log.d("Dashboard", "Initialized missing events_count field");
+            }
+        });
+
+        helmetStatusRef.child("last_event").get().addOnCompleteListener(task -> {
+            if (task.isSuccessful() && (task.getResult() == null || !task.getResult().exists())) {
+                helmetStatusRef.child("last_event").setValue("No events yet");
+                android.util.Log.d("Dashboard", "Initialized missing last_event field");
+            }
+        });
+    }
+
+    private void setDefaultHelmetStatusValues(DatabaseReference helmetStatusRef) {
+        if (helmetStatusRef == null) {
+            return;
+        }
+
+        Map<String, Object> defaults = new HashMap<>();
+        defaults.put("is_drowsy", false);
+        defaults.put("alarm_active", false);
+        defaults.put("events_count", 0);
+        defaults.put("last_event", "No events yet");
+
+        helmetStatusRef.updateChildren(defaults).addOnCompleteListener(task -> {
+            if (!task.isSuccessful()) {
+                android.util.Log.w("Dashboard", "Failed to set default helmet status values: " +
+                        (task.getException() != null ? task.getException().getMessage() : "unknown error"));
+            }
+        });
     }
 
     private void setupPrototypeDetection() {
@@ -1244,8 +1472,14 @@ public class Dashboard extends AppCompatActivity implements SurfaceHolder.Callba
             showPrototypeWaitingState();
         });
         
+        final DatabaseReference helmetStatusRef = getHelmetStatusRef();
+        if (helmetStatusRef == null) {
+            android.util.Log.w("Dashboard", "Helmet status reference is null - cannot set up prototype detection");
+            return;
+        }
+
         // Check for prototype connection periodically with improved logic
-        mDatabase.child("helmet_status").addValueEventListener(new ValueEventListener() {
+        helmetStatusRef.addValueEventListener(new ValueEventListener() {
             private boolean hasDetectedPrototype = false;
             private long lastCheckTime = System.currentTimeMillis();
             private boolean isInitializing = true;
@@ -1283,7 +1517,7 @@ public class Dashboard extends AppCompatActivity implements SurfaceHolder.Callba
                             });
                             
                             // Remove this listener and start normal Firebase listeners
-                            mDatabase.child("helmet_status").removeEventListener(this);
+                            helmetStatusRef.removeEventListener(this);
                             setupFirebaseListeners();
                         } else {
                             android.util.Log.d("Dashboard", "No active prototype detected - data too old or static");
@@ -1305,7 +1539,13 @@ public class Dashboard extends AppCompatActivity implements SurfaceHolder.Callba
     }
 
     private void setupFirebaseListeners() {
-        mDatabase.child("helmet_status").addValueEventListener(new ValueEventListener() {
+        final DatabaseReference helmetStatusRef = getHelmetStatusRef();
+        if (helmetStatusRef == null) {
+            android.util.Log.w("Dashboard", "Helmet status reference is null - cannot set up Firebase listeners");
+            return;
+        }
+
+        helmetStatusRef.addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 if (snapshot.exists()) {
@@ -1336,7 +1576,7 @@ public class Dashboard extends AppCompatActivity implements SurfaceHolder.Callba
 
                     updateUI(isDrowsy, isAlarmActive, eventsCount, lastEventDisplay);
                 } else {
-                    android.util.Log.d("Dashboard", "No helmet_status data found in Firebase - prototype may not be connected");
+                    android.util.Log.d("Dashboard", "No helmet status data found for user - prototype may not be connected");
                 }
             }
 
@@ -1695,7 +1935,11 @@ public class Dashboard extends AppCompatActivity implements SurfaceHolder.Callba
         // Update Firebase in background thread to avoid blocking UI
         networkExecutor.execute(() -> {
             try {
-                DatabaseReference statusRef = mDatabase.child("helmet_status");
+                DatabaseReference statusRef = getHelmetStatusRef();
+                if (statusRef == null) {
+                    android.util.Log.w("Dashboard", "Helmet status reference unavailable while updating drowsiness event");
+                    return;
+                }
                 statusRef.child("is_drowsy").setValue(isDrowsy);
                 statusRef.child("last_event").setValue(timestamp);
                 
@@ -1712,7 +1956,11 @@ public class Dashboard extends AppCompatActivity implements SurfaceHolder.Callba
         // This ensures we only count actual drowsiness events, not brief eye closures
         networkExecutor.execute(() -> {
             try {
-                DatabaseReference statusRef = mDatabase.child("helmet_status");
+                DatabaseReference statusRef = getHelmetStatusRef();
+                if (statusRef == null) {
+                    android.util.Log.w("Dashboard", "Helmet status reference unavailable while incrementing event count");
+                    return;
+                }
                 statusRef.child("last_event").setValue(timestamp);
                 
                 // Get current count and increment
@@ -1720,8 +1968,11 @@ public class Dashboard extends AppCompatActivity implements SurfaceHolder.Callba
                     if (task.isSuccessful()) {
                         DataSnapshot snapshot = task.getResult();
                         int currentCount = 0;
-                        if (snapshot.exists()) {
-                            currentCount = snapshot.getValue(Integer.class);
+                        if (snapshot != null && snapshot.exists()) {
+                            Integer value = snapshot.getValue(Integer.class);
+                            if (value != null) {
+                                currentCount = value;
+                            }
                         }
                         // Increment the count for this alarm event
                         statusRef.child("events_count").setValue(currentCount + 1);
@@ -1931,12 +2182,18 @@ public class Dashboard extends AppCompatActivity implements SurfaceHolder.Callba
                 alertMediaPlayer = null;
             }
 
+            // Stop vibration in sync
+            stopVibration();
+
             isAlarmSounding = false;
 
             if (wasSounding && networkExecutor != null && !networkExecutor.isShutdown() && mDatabase != null) {
                 networkExecutor.execute(() -> {
                     try {
-                        mDatabase.child("helmet_status").child("alarm_active").setValue(false);
+                        DatabaseReference statusRef = getHelmetStatusRef();
+                        if (statusRef != null) {
+                            statusRef.child("alarm_active").setValue(false);
+                        }
                     } catch (Exception dbError) {
                         android.util.Log.e("Dashboard", "Error updating alarm status: " + dbError.getMessage(), dbError);
                     }
@@ -1958,42 +2215,26 @@ public class Dashboard extends AppCompatActivity implements SurfaceHolder.Callba
             // Create and play the selected tone
             alertMediaPlayer = new MediaPlayer();
             
-            // Use the same tone mapping as AlertTonesActivity
-            switch (selectedTone) {
-                case "Default Beep":
-                    alertMediaPlayer.setDataSource(this, android.provider.Settings.System.DEFAULT_NOTIFICATION_URI);
-                    break;
-                case "High Pitch Alert":
-                    alertMediaPlayer.setDataSource(this, android.provider.Settings.System.DEFAULT_ALARM_ALERT_URI);
-                    break;
-                case "Low Pitch Warning":
-                    alertMediaPlayer.setDataSource(this, android.provider.Settings.System.DEFAULT_RINGTONE_URI);
-                    break;
-                case "Continuous Beep":
-                    alertMediaPlayer.setDataSource(this, android.provider.Settings.System.DEFAULT_NOTIFICATION_URI);
-                    break;
-                case "Pulse Alert":
-                    alertMediaPlayer.setDataSource(this, android.provider.Settings.System.DEFAULT_ALARM_ALERT_URI);
-                    break;
-                case "Emergency Siren":
-                    alertMediaPlayer.setDataSource(this, android.provider.Settings.System.DEFAULT_RINGTONE_URI);
-                    break;
-                default:
-                    alertMediaPlayer.setDataSource(this, android.provider.Settings.System.DEFAULT_NOTIFICATION_URI);
-                    break;
-            }
+            // Map to distinct system tones (aligned with AlertTonesActivity)
+            alertMediaPlayer.setDataSource(this, selectToneUriDistinct(this, selectedTone));
             
             alertMediaPlayer.prepare();
             alertMediaPlayer.setLooping(true);
             alertMediaPlayer.start();
             isAlarmSounding = true;
+
+            // Start vibration in sync with the tone
+            startVibrationForTone(selectedTone);
             
             // Update Firebase and log event in background thread
             if (networkExecutor != null && !networkExecutor.isShutdown() && mDatabase != null) {
                 networkExecutor.execute(() -> {
                     try {
-                        // Update Firebase to show alarm is active
-                        mDatabase.child("helmet_status").child("alarm_active").setValue(true);
+                        DatabaseReference statusRef = getHelmetStatusRef();
+                        if (statusRef != null) {
+                            // Update Firebase to show alarm is active
+                            statusRef.child("alarm_active").setValue(true);
+                        }
                         
                         // Log drowsiness event to database
                         logDrowsinessEvent();
@@ -2014,14 +2255,29 @@ public class Dashboard extends AppCompatActivity implements SurfaceHolder.Callba
         // Log to Firebase in background thread to avoid blocking UI
         networkExecutor.execute(() -> {
             try {
-                String currentUserId = mAuth.getCurrentUser().getUid();
+                String userId = currentUserId;
+                if (userId == null && mAuth != null && mAuth.getCurrentUser() != null) {
+                    userId = mAuth.getCurrentUser().getUid();
+                    currentUserId = userId;
+                }
+
+                if (userId == null) {
+                    android.util.Log.w("Dashboard", "No authenticated user - skipping drowsiness event logging");
+                    return;
+                }
+
                 long timestamp = System.currentTimeMillis();
                 
                 // Create a unique key for this log entry
-                String logKey = mDatabase.child("drowsiness_logs").child(currentUserId).push().getKey();
+                DatabaseReference userLogsRef = mDatabase.child("drowsiness_logs").child(userId);
+                String logKey = userLogsRef.push().getKey();
+                if (logKey == null) {
+                    android.util.Log.w("Dashboard", "Unable to create log key for drowsiness event");
+                    return;
+                }
                 
                 // Save the timestamp to the database
-                mDatabase.child("drowsiness_logs").child(currentUserId).child(logKey).setValue(timestamp)
+                userLogsRef.child(logKey).setValue(timestamp)
                     .addOnSuccessListener(aVoid -> {
                         android.util.Log.d("Dashboard", "Drowsiness event logged successfully");
                     })

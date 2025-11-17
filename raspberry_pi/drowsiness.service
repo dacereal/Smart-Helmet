@@ -7,7 +7,7 @@ Type=simple
 User=smarthelmet
 WorkingDirectory=/home/smarthelmet/smart_helmet_pi
 Environment="PATH=/home/smarthelmet/smart_helmet_pi/venv/bin"
-ExecStart=/home/smarthelmet/smart_helmet_pi/venv/bin/python3 /home/smarthelmet/smart_helmet_pi/drowsiness_server.py
+ExecStart=/home/smarthelmet/smart_helmet_pi/venv/bin/python3 /home/smarthelmet/smart_helmet_pi/drowsiness_server_pi_camera.py
 Restart=always
 RestartSec=10
 

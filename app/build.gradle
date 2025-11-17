@@ -1,0 +1,98 @@
+import java.util.Properties
+import java.io.FileInputStream
+
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.google.gms.google.services)
+}
+
+android {
+    namespace = "com.botsquad.smarthelmet"
+    compileSdk = 35
+
+    defaultConfig {
+        applicationId = "com.botsquad.smarthelmet"
+        minSdk = 24
+        targetSdk = 34
+        versionCode = 1
+        versionName = "1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        ndk {
+            abiFilters.addAll(["arm64-v8a", "armeabi-v7a", "x86", "x86_64"])
+        }
+    }
+
+    signingConfigs {
+        release {
+            def keystorePropertiesFile = rootProject.file("keystore.properties")
+            def keystoreProperties = new Properties()
+            keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+
+            keyAlias = keystoreProperties['keyAlias']
+            keyPassword = keystoreProperties['keyPassword']
+            storeFile = rootProject.file(keystoreProperties['storeFile'])
+            storePassword = keystoreProperties['storePassword']
+
+            // v1/v2 signing (deprecated but works)
+            v1SigningEnabled = true
+            v2SigningEnabled = true
+        }
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.release
+            minifyEnabled = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    
+    // Configure Java toolchain to use JDK 17 instead of JDK 19
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(17)
+        }
+    }
+}
+
+dependencies {
+    // Import Firebase BoM to manage Firebase library versions
+    implementation(platform("com.google.firebase:firebase-bom:33.2.0"))
+    
+    implementation(libs.appcompat)
+    implementation(libs.material)
+    implementation(libs.activity)
+    implementation(libs.constraintlayout)
+    implementation(libs.firebase.database)
+    implementation(libs.firebase.auth)
+    implementation("com.google.firebase:firebase-auth-ktx")
+    // Firebase App Check - prevents device blocking
+    // Versions are managed by BoM above, so no version specified
+    implementation("com.google.firebase:firebase-appcheck")
+    implementation("com.google.firebase:firebase-appcheck-playintegrity")
+    implementation("org.java-websocket:Java-WebSocket:1.5.3")
+    implementation("org.tensorflow:tensorflow-lite:2.16.1")
+    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
+    testImplementation(libs.junit)
+    testImplementation("org.mockito:mockito-core:5.6.0")
+    testImplementation("org.mockito:mockito-inline:5.2.0")
+    testImplementation("androidx.test:core:1.5.0")
+    androidTestImplementation(libs.ext.junit)
+    androidTestImplementation(libs.espresso.core)
+}
+
